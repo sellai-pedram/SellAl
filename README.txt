@@ -1,4 +1,4 @@
-SellAI v10 Production
+SellAI v11 Mobile Upload Fix
 =====================
 
 Features:
@@ -34,3 +34,6 @@ The backend sends the uploaded image to POST /responses at OPENAI_BASE_URL.
 The model is asked to return JSON keys:
 title, description, instagram, hashtags.
 If OPENAI_API_KEY is empty, the app intentionally uses a demo response.
+
+
+V11 fix: browser compresses product images to JPEG before upload and shows clearer network/server errors.
