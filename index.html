@@ -9,7 +9,7 @@ body{font-family:system-ui;background:#0b1020;color:#fff;margin:0}.wrap{max-widt
 input,button,select{width:100%;box-sizing:border-box;padding:13px;border-radius:12px;border:1px solid #35415f;background:#0e1527;color:#fff;margin:6px 0}
 button{cursor:pointer;background:#6d5dfc;border:0;font-weight:700}.row{display:grid;grid-template-columns:1fr 1fr;gap:8px}.muted{color:#aab4cc}.hide{display:none}.pill{display:inline-block;padding:5px 9px;border-radius:999px;background:#26304b}
 img.preview{width:100%;max-height:320px;object-fit:contain;border-radius:14px;background:#0b1020}
-pre{white-space:pre-wrap;line-height:1.8}.qr{width:220px;height:220px;background:#fff;padding:8px;border-radius:10px;display:block;margin:10px auto}
+.result{line-height:2}.result .section{margin:12px 0;padding:12px 14px;background:#0f162b;border-radius:12px}.result .label{font-weight:700;margin-bottom:4px}.result .text{white-space:pre-wrap}.qr{width:220px;height:220px;background:#fff;padding:8px;border-radius:10px;display:block;margin:10px auto}
 h1{margin-bottom:4px}
 </style></head><body><div class="wrap">
 <h1>SellAI ✨</h1><div class="muted">تولید محتوای فروش از روی عکس محصول</div>
@@ -17,7 +17,7 @@ h1{margin-bottom:4px}
 <div class="row"><button onclick="auth('/login')">ورود</button><button onclick="auth('/register')">ثبت‌نام</button></div><div id="msg" class="muted"></div></div>
 <div id="app" class="hide">
 <div class="card"><div>وضعیت: <span id="plan" class="pill"></span></div><div id="credits" class="muted"></div></div>
-<div class="card"><h3>ساخت محتوا</h3><input id="photo" type="file" accept="image/*"><select id="lang"><option value="fa">فارسی</option><option value="en">English</option></select><button onclick="generate()">Generate ✨</button><img id="preview" class="preview hide"><pre id="result"></pre></div>
+<div class="card"><h3>ساخت محتوا</h3><input id="photo" type="file" accept="image/*"><select id="lang"><option value="fa">فارسی</option><option value="en">English</option></select><button onclick="generate()">Generate ✨</button><img id="preview" class="preview hide"><div id="result" class="result"></div></div>
 <div class="card"><h3>Pro — ۵ USDT / ۳۰ روز</h3><div class="muted">پرداخت USDT روی شبکه TRON (TRC20)</div><button onclick="order()">ساخت فاکتور پرداخت</button><div id="pay"></div></div>
 </div></div>
 <script>
@@ -37,7 +37,7 @@ async function api(url,opt={}){
   }
 }
 async function auth(url){try{let j=await api(url,{method:'POST',body:JSON.stringify({email:$('email').value,password:$('pass').value})});token=j.token;localStorage.setItem('sellai_token',token);boot()}catch(e){$('msg').textContent=e.message}}
-async function boot(){if(!token)return;$('auth').classList.add('hide');$('app').classList.remove('hide');let m=await api('/me?token='+encodeURIComponent(token));$('plan').textContent=m.plan==='pro'?'PRO':'FREE';$('credits').textContent='اعتبار رایگان: '+m.credits+(m.pro_until?' | Pro تا: '+m.pro_until:'')}
+async function boot(){if(!token)return;try{$('auth').classList.add('hide');$('app').classList.remove('hide');let m=await api('/me?token='+encodeURIComponent(token));$('plan').textContent=m.plan==='pro'?'PRO':'FREE';$('credits').textContent='اعتبار رایگان: '+m.credits+(m.pro_until?' | Pro تا: '+m.pro_until:'')}catch(e){if(String(e.message).toLowerCase().includes('invalid session')){token='';localStorage.removeItem('sellai_token');$('auth').classList.remove('hide');$('app').classList.add('hide');$('msg').textContent='نشست قبلی منقضی شده؛ دوباره وارد حساب شو.'}else{$('msg').textContent=e.message}}}
 $('photo').onchange=()=>{let f=$('photo').files[0];if(!f)return;$('preview').src=URL.createObjectURL(f);$('preview').classList.remove('hide')}
 async function dataUrl(f){
   // Compress the image in the browser before sending it. This keeps mobile uploads
@@ -64,7 +64,9 @@ async function dataUrl(f){
     reader.readAsDataURL(f);
   });
 }
-async function generate(){try{let f=$('photo').files[0];if(!f)throw Error('عکس محصول را انتخاب کن');$('result').textContent='در حال تولید...';let j=await api('/generate',{method:'POST',body:JSON.stringify({token,image_data_url:await dataUrl(f),language:$('lang').value})});$('result').textContent='عنوان: '+j.title+'\\n\\nتوضیحات: '+j.description+'\\n\\nInstagram: '+j.instagram+'\\n\\nHashtags: '+j.hashtags;boot()}catch(e){$('result').textContent=e.message}}
+function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function showResult(j){$('result').innerHTML='<div class="section"><div class="label">عنوان محصول</div><div class="text">'+esc(j.title)+'</div></div><div class="section"><div class="label">توضیحات</div><div class="text">'+esc(j.description)+'</div></div><div class="section"><div class="label">متن Instagram</div><div class="text">'+esc(j.instagram)+'</div></div><div class="section"><div class="label">هشتگ‌ها</div><div class="text">'+esc(j.hashtags)+'</div></div>'}
+async function generate(){try{let f=$('photo').files[0];if(!f)throw Error('عکس محصول را انتخاب کن');$('result').textContent='در حال آماده‌سازی عکس و تولید محتوا...';let j=await api('/generate',{method:'POST',body:JSON.stringify({token,image_data_url:await dataUrl(f),language:$('lang').value})});showResult(j);boot()}catch(e){$('result').textContent='خطا: '+e.message}}
 async function order(){try{let j=await api('/orders',{method:'POST',body:JSON.stringify({token})});let qr='https://quickchart.io/qr?size=220&text='+encodeURIComponent('tron:'+j.address+'?token=USDT&amount='+j.amount_usdt);$('pay').innerHTML='<p>مبلغ: <b>'+j.amount_usdt+' USDT</b></p><p>شبکه: TRON / TRC20</p><p style="word-break:break-all">'+j.address+'</p><img class="qr" src="'+qr+'"><input id="tx" placeholder="TX Hash"><button onclick="verify(\''+j.order_id+'\')">بررسی پرداخت</button><div id="vmsg"></div>'}catch(e){$('pay').textContent=e.message}}
 async function verify(id){try{let j=await api('/orders/verify',{method:'POST',body:JSON.stringify({token,order_id:id,tx_hash:$('tx').value})});$('vmsg').textContent='پرداخت تأیید شد ✅ Pro تا '+j.pro_until;boot()}catch(e){$('vmsg').textContent=e.message}}
 boot();

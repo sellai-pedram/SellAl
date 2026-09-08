@@ -1,4 +1,4 @@
-SellAI v11 Mobile Upload Fix
+SellAI v12 Output Fix
 =====================
 
 Features:
