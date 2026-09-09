@@ -16,8 +16,11 @@ TRONGRID_KEY = os.getenv("TRONGRID_API_KEY", "")
 PRO_PRICE_USDT = float(os.getenv("PRO_PRICE_USDT", "5"))
 PRO_DAYS = int(os.getenv("PRO_DAYS", "30"))
 
-# AI provider is configurable. For OpenAI, use OPENAI_API_KEY and a current vision-capable model.
-# For another OpenAI-compatible provider, also set OPENAI_BASE_URL.
+# AI provider configuration. OpenRouter is the primary provider for SellAI.
+# OpenAI variables are kept as a fallback for compatibility.
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1").rstrip("/")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openrouter/free")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
 AI_MODEL = os.getenv("AI_MODEL", "gpt-5")
@@ -155,44 +158,81 @@ def demo_copy(lang):
     return {"title":"Premium Product","description":"A practical, well-designed product with an attractive presentation, ready for your online store.","instagram":"✨ Upgrade your everyday style with this product. Message us to order.","hashtags":"#product #onlineshop #shopping #SellAI"}
 
 def ai_generate(image_data_url, lang):
-    if not OPENAI_API_KEY:
-        return demo_copy(lang)
+    # Prefer OpenRouter. Its free router can select a vision-capable free model.
+    if OPENROUTER_API_KEY:
+        prompt = (
+            "Analyze this product image and create concise ecommerce copy. "
+            "Return ONLY valid JSON with exactly these keys: title, description, instagram, hashtags. "
+            "Do not invent specifications that are not visible. "
+            + ("Write in Persian." if lang=="fa" else "Write in English.")
+        )
+        payload = {
+            "model": OPENROUTER_MODEL,
+            "messages": [{
+                "role": "user",
+                "content": [
+                    {"type":"text","text":prompt},
+                    {"type":"image_url","image_url":{"url":image_data_url}}
+                ]
+            }],
+            "response_format": {"type": "json_object"}
+        }
+        headers = {
+            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://sellal.onrender.com",
+            "X-Title": "SellAI"
+        }
+        r = requests.post(f"{OPENROUTER_BASE_URL}/chat/completions", headers=headers, json=payload, timeout=90)
+        if r.status_code >= 400:
+            detail = r.text[:300].replace("\n", " ")
+            raise HTTPException(502, f"AI provider error ({r.status_code}): {detail}")
+        data = r.json()
+        try:
+            text = data["choices"][0]["message"]["content"]
+            if isinstance(text, list):
+                text = "".join(part.get("text", "") for part in text if isinstance(part, dict))
+            return json.loads(text)
+        except Exception:
+            raise HTTPException(502, "AI returned invalid JSON")
 
-    # OpenAI Responses API-compatible request. The API key stays server-side.
-    prompt = (
-        "Analyze this product image and create concise ecommerce copy. "
-        "Return ONLY valid JSON with keys: title, description, instagram, hashtags. "
-        "Do not invent specifications that are not visible. "
-        + ("Write in Persian." if lang=="fa" else "Write in English.")
-    )
-    payload = {
-        "model": AI_MODEL,
-        "input": [{
-            "role": "user",
-            "content": [
-                {"type":"input_text","text":prompt},
-                {"type":"input_image","image_url":image_data_url}
-            ]
-        }]
-    }
-    headers={"Authorization":f"Bearer {OPENAI_API_KEY}","Content-Type":"application/json"}
-    r=requests.post(f"{OPENAI_BASE_URL}/responses", headers=headers, json=payload, timeout=60)
-    if r.status_code >= 400:
-        raise HTTPException(502, f"AI provider error ({r.status_code})")
-    data=r.json()
-    text=data.get("output_text")
-    if not text:
-        # Compatible fallback for providers that return nested output content.
-        parts=[]
-        for item in data.get("output",[]):
-            for content in item.get("content",[]):
-                if content.get("type") in ("output_text","text") and content.get("text"):
-                    parts.append(content["text"])
-        text="".join(parts).strip()
-    try:
-        return json.loads(text)
-    except Exception:
-        raise HTTPException(502,"AI returned invalid JSON")
+    # OpenAI fallback, retained for compatibility if an OpenAI key is configured.
+    if OPENAI_API_KEY:
+        prompt = (
+            "Analyze this product image and create concise ecommerce copy. "
+            "Return ONLY valid JSON with keys: title, description, instagram, hashtags. "
+            "Do not invent specifications that are not visible. "
+            + ("Write in Persian." if lang=="fa" else "Write in English.")
+        )
+        payload = {
+            "model": AI_MODEL,
+            "input": [{
+                "role": "user",
+                "content": [
+                    {"type":"input_text","text":prompt},
+                    {"type":"input_image","image_url":image_data_url}
+                ]
+            }]
+        }
+        headers={"Authorization":f"Bearer {OPENAI_API_KEY}","Content-Type":"application/json"}
+        r=requests.post(f"{OPENAI_BASE_URL}/responses", headers=headers, json=payload, timeout=60)
+        if r.status_code >= 400:
+            raise HTTPException(502, f"AI provider error ({r.status_code})")
+        data=r.json()
+        text=data.get("output_text")
+        if not text:
+            parts=[]
+            for item in data.get("output",[]):
+                for content in item.get("content",[]):
+                    if content.get("type") in ("output_text","text") and content.get("text"):
+                        parts.append(content["text"])
+            text="".join(parts).strip()
+        try:
+            return json.loads(text)
+        except Exception:
+            raise HTTPException(502,"AI returned invalid JSON")
+
+    return demo_copy(lang)
 
 @app.post("/generate")
 def generate(x:GenerateReq):
